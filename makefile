@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -std=c99 -Wall -Wextra -Wpedantic -O2 -Iinclude -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700
 LDFLAGS =
 
-SRCS = src/main.c src/dict.c src/match.c
+SRCS = src/main.c src/tty.c src/dict.c src/match.c src/modem.c src/selftest.c
 OBJS = $(SRCS:src/%.c=build/%.o)
 
 .PHONY: all clean test
