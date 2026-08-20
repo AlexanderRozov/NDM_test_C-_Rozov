@@ -42,6 +42,45 @@ static void test_match()
     expect_true("empty == empty", match_pattern("", ""));
 }
 
+static void test_extra(const std::string& dict_path)
+{
+    std::printf("extra:\n");
+    expect_true("* is glob any-length", match_pattern("*", "AT+FOOBAR"));
+    expect_true("ATE. is exactly one", !match_pattern("ATE.", "ATE00"));
+    expect_true("A*T matches AT", match_pattern("A*T", "AT"));
+    expect_true("A*T matches ABCT", match_pattern("A*T", "ABCT"));
+    expect_true("A*T does not match ATC", !match_pattern("A*T", "ATC"));
+    expect_true("** matches anything", match_pattern("**", "XYZ"));
+    expect_true(". does not match empty", !match_pattern(".", ""));
+    expect_true("AT+COPS* would match AT+COPS?", match_pattern("AT+COPS*", "AT+COPS?"));
+
+    Dictionary dict;
+    if (!dict.load(dict_path)) {
+        expect_true("extra load dictionary", false);
+        return;
+    }
+    Modem modem(dict);
+
+    expect_true("AT+COPS -> OK", modem.handle("AT+COPS") == "OK");
+    expect_true("AT+COPS? still operator",
+                modem.handle("AT+COPS?").find("Test Operator") != std::string::npos);
+    expect_true("ATE (no digit) -> OK", modem.handle("ATE") == "OK");
+    expect_true("ATE turns echo off", !modem.echo_on());
+    modem.handle("ate1");
+    expect_true("ate1 lowercase echo on", modem.echo_on());
+    expect_true("AT+CPIN=0000 without quotes", modem.handle("AT+CPIN=0000") == "OK");
+    expect_true("PIN ready after unquoted set",
+                modem.handle("AT+CPIN?").find("READY") != std::string::npos);
+
+    Modem locked(dict);
+    expect_true("wrong PIN CME ERROR",
+                locked.handle("AT+CPIN=\"9999\"").find("+CME ERROR") != std::string::npos);
+    expect_true("ATI still works with locked SIM",
+                locked.handle("ATI").find("FakeModem") != std::string::npos);
+    expect_true("ATE2 falls to CSV ATE. -> OK", locked.handle("ATE2") == "OK");
+    expect_true("ATE2 does not change echo", locked.echo_on());
+}
+
 static void test_modem(const std::string& dict_path)
 {
     Dictionary dict;
@@ -176,6 +215,7 @@ static void test_pty(const std::string& dict_path)
     send_expect(client, "AT", "OK", "PTY AT");
     send_expect(client, "ATI", "FakeModem", "PTY ATI");
     send_expect(client, "ATE0", "OK", "PTY ATE0");
+    send_expect(client, "AT+COPS", "OK", "PTY AT+COPS");
     send_expect(client, "AT+COPS?", "Test Operator", "PTY AT+COPS?");
     send_expect(client, "AT+CPIN?", "SIM PIN", "PTY AT+CPIN?");
     send_expect(client, "AT+CPIN=\"0000\"", "OK", "PTY AT+CPIN=");
@@ -191,6 +231,7 @@ int run_self_test(const std::string& dict_path)
     std::printf("self-test (%s)\n", dict_path.c_str());
     test_match();
     test_modem(dict_path);
+    test_extra(dict_path);
     test_pty(dict_path);
     if (g_failed == 0) {
         std::printf("all tests passed\n");

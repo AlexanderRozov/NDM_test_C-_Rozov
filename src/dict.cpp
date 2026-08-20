@@ -80,41 +80,29 @@ static int csv_field(std::string_view line, std::size_t& pos, std::string& out)
             if (pos >= line.size()) {
                 return -1;
             }
-            switch (line[pos]) {
-            case '"':
+            if (line[pos] == '"') {
                 if (pos + 1 < line.size() && line[pos + 1] == '"') {
                     out.push_back('"');
                     pos += 2;
-                    break;
+                    continue;
                 }
                 ++pos;
                 while (pos < line.size() && (line[pos] == ' ' || line[pos] == '\t')) {
                     ++pos;
                 }
-                goto field_end;
-            default:
-                out.push_back(line[pos++]);
                 break;
             }
+            out.push_back(line[pos++]);
         }
     } else {
         while (pos < line.size() && line[pos] != ',') {
             out.push_back(line[pos++]);
         }
-        while (!out.empty()) {
-            switch (out.back()) {
-            case ' ':
-            case '\t':
-                out.pop_back();
-                continue;
-            default:
-                break;
-            }
-            break;
+        while (!out.empty() && (out.back() == ' ' || out.back() == '\t')) {
+            out.pop_back();
         }
     }
 
-field_end:
     if (pos < line.size() && line[pos] == ',') {
         ++pos;
         return 1;
