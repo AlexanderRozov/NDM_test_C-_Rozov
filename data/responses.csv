@@ -1,0 +1,11 @@
+expect,answer
+AT,OK
+ATE0,OK
+ATE1,OK
+ATE.,OK
+ATI,"FakeModem\nRevision: 1.0\nOK"
+AT+COPS?,"+COPS: 0,0,""Test Operator""\nOK"
+AT+COPS,OK
+AT+CPIN?,"+CPIN: SIM PIN\nOK"
+AT+CPIN*,OK
+*,ERROR
