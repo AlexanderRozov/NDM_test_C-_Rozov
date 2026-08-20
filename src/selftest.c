@@ -45,6 +45,64 @@ static int test_match(void)
     return g_failed == 0 ? 0 : -1;
 }
 
+static int test_extra(const char *dict_path)
+{
+    Dict dict;
+    Modem modem;
+    Modem locked;
+    char ans[512];
+    int before = g_failed;
+
+    printf("extra:\n");
+    expect_true("* is glob any-length", match_pattern("*", "AT+FOOBAR"));
+    expect_true("ATE. is exactly one", !match_pattern("ATE.", "ATE00"));
+    expect_true("A*T matches AT", match_pattern("A*T", "AT"));
+    expect_true("A*T matches ABCT", match_pattern("A*T", "ABCT"));
+    expect_true("A*T does not match ATC", !match_pattern("A*T", "ATC"));
+    expect_true("** matches anything", match_pattern("**", "XYZ"));
+    expect_true(". does not match empty", !match_pattern(".", ""));
+    expect_true("AT+COPS* would match AT+COPS?", match_pattern("AT+COPS*", "AT+COPS?"));
+
+    if (dict_load(&dict, dict_path) != 0) {
+        expect_true("extra load dictionary", 0);
+        return -1;
+    }
+    modem_init(&modem, &dict);
+
+    modem_handle(&modem, "AT+COPS", ans, sizeof ans);
+    expect_true("AT+COPS -> OK", strcmp(ans, "OK") == 0);
+
+    modem_handle(&modem, "AT+COPS?", ans, sizeof ans);
+    expect_true("AT+COPS? still operator", strstr(ans, "Test Operator") != NULL);
+
+    modem_handle(&modem, "ATE", ans, sizeof ans);
+    expect_true("ATE (no digit) -> OK", strcmp(ans, "OK") == 0);
+    expect_true("ATE turns echo off", modem.echo_on == 0);
+
+    modem_handle(&modem, "ate1", ans, sizeof ans);
+    expect_true("ate1 lowercase echo on", modem.echo_on == 1);
+
+    modem_handle(&modem, "AT+CPIN=0000", ans, sizeof ans);
+    expect_true("AT+CPIN=0000 without quotes", strcmp(ans, "OK") == 0);
+
+    modem_handle(&modem, "AT+CPIN?", ans, sizeof ans);
+    expect_true("PIN ready after unquoted set", strstr(ans, "READY") != NULL);
+
+    modem_init(&locked, &dict);
+    modem_handle(&locked, "AT+CPIN=\"9999\"", ans, sizeof ans);
+    expect_true("wrong PIN CME ERROR", strstr(ans, "+CME ERROR") != NULL);
+
+    modem_handle(&locked, "ATI", ans, sizeof ans);
+    expect_true("ATI still works with locked SIM", strstr(ans, "FakeModem") != NULL);
+
+    modem_handle(&locked, "ATE2", ans, sizeof ans);
+    expect_true("ATE2 falls to CSV ATE. -> OK", strcmp(ans, "OK") == 0);
+    expect_true("ATE2 does not change echo", locked.echo_on == 1);
+
+    dict_free(&dict);
+    return g_failed == before ? 0 : -1;
+}
+
 static int test_modem(const char *dict_path)
 {
     Dict dict;
@@ -112,7 +170,7 @@ static int wait_reply(int fd, char *buf, size_t buflen, int timeout_ms)
         r = select(fd + 1, &rfds, NULL, NULL, &tv);
         switch (r) {
         case 0:
-            goto done;
+            return got > 0 ? 0 : -1;
         case -1:
             if (errno == EINTR) {
                 continue;
@@ -132,7 +190,6 @@ static int wait_reply(int fd, char *buf, size_t buflen, int timeout_ms)
             return 0;
         }
     }
-done:
     return got > 0 ? 0 : -1;
 }
 
@@ -212,6 +269,7 @@ static int test_pty(const char *dict_path)
         send_expect(slave_fd, "AT", "OK", "PTY AT");
         send_expect(slave_fd, "ATI", "FakeModem", "PTY ATI");
         send_expect(slave_fd, "ATE0", "OK", "PTY ATE0");
+        send_expect(slave_fd, "AT+COPS", "OK", "PTY AT+COPS");
         send_expect(slave_fd, "AT+COPS?", "Test Operator", "PTY AT+COPS?");
         send_expect(slave_fd, "AT+CPIN?", "SIM PIN", "PTY AT+CPIN?");
         send_expect(slave_fd, "AT+CPIN=\"0000\"", "OK", "PTY AT+CPIN=");
@@ -231,6 +289,7 @@ int run_self_test(const char *dict_path)
     printf("self-test (%s)\n", dict_path);
     test_match();
     test_modem(dict_path);
+    test_extra(dict_path);
     test_pty(dict_path);
     if (g_failed == 0) {
         printf("all tests passed\n");

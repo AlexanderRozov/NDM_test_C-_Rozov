@@ -109,30 +109,28 @@ static int csv_field(const char **pp, char *out, size_t out_sz)
     if (*s == '"') {
         s++;
         for (;;) {
-            switch (*s) {
-            case '\0':
+            if (*s == '\0') {
                 return -1;
-            case '"':
+            }
+            if (*s == '"') {
                 if (s[1] == '"') {
                     if (n + 1 >= out_sz) {
                         return -1;
                     }
                     out[n++] = '"';
                     s += 2;
-                    break;
+                    continue;
                 }
                 s++;
                 while (*s == ' ' || *s == '\t') {
                     s++;
                 }
-                goto field_end;
-            default:
-                if (n + 1 >= out_sz) {
-                    return -1;
-                }
-                out[n++] = *s++;
                 break;
             }
+            if (n + 1 >= out_sz) {
+                return -1;
+            }
+            out[n++] = *s++;
         }
     } else {
         while (*s != '\0' && *s != ',') {
@@ -141,20 +139,11 @@ static int csv_field(const char **pp, char *out, size_t out_sz)
             }
             out[n++] = *s++;
         }
-        while (n > 0) {
-            switch (out[n - 1]) {
-            case ' ':
-            case '\t':
-                n--;
-                continue;
-            default:
-                break;
-            }
-            break;
+        while (n > 0 && (out[n - 1] == ' ' || out[n - 1] == '\t')) {
+            n--;
         }
     }
 
-field_end:
     out[n] = '\0';
     switch (*s) {
     case ',':
@@ -166,6 +155,15 @@ field_end:
     default:
         return -1;
     }
+}
+
+static int dict_fail(FILE *fp, Dict *dict, char *expect, char *answer)
+{
+    free(expect);
+    free(answer);
+    fclose(fp);
+    dict_free(dict);
+    return -1;
 }
 
 int dict_load(Dict *dict, const char *path)
@@ -206,12 +204,12 @@ int dict_load(Dict *dict, const char *path)
         if (more != 1) {
             fprintf(stderr, "%s:%u: expected two CSV columns (expect,answer)\n",
                     path, lineno);
-            goto fail;
+            return dict_fail(fp, dict, expect, answer);
         }
         more = csv_field(&p, answer_buf, sizeof answer_buf);
         if (more != 0) {
             fprintf(stderr, "%s:%u: expected exactly two CSV columns\n", path, lineno);
-            goto fail;
+            return dict_fail(fp, dict, expect, answer);
         }
 
         str_toupper(expect_buf);
@@ -223,7 +221,7 @@ int dict_load(Dict *dict, const char *path)
         expect = dup_str(expect_buf);
         answer = dup_str(answer_buf);
         if (expect == NULL || answer == NULL || dict_push(dict, expect, answer) != 0) {
-            goto fail;
+            return dict_fail(fp, dict, expect, answer);
         }
         expect = NULL;
         answer = NULL;
@@ -231,13 +229,6 @@ int dict_load(Dict *dict, const char *path)
 
     fclose(fp);
     return 0;
-
-fail:
-    free(expect);
-    free(answer);
-    fclose(fp);
-    dict_free(dict);
-    return -1;
 }
 
 const char *dict_lookup(const Dict *dict, const char *command)
